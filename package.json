@@ -2,7 +2,7 @@
   "name": "lakeside-spin-wheel-browser-test",
   "private": true,
   "version": "1.0.0",
-  "description": "Concurrent development-store spin tests through configurable concurrent Chrome tabs in one window",
+  "description": "Concurrent development-store spin API tests with optional browser UI mode",
   "engines": {
     "node": ">=22"
   },
@@ -10,9 +10,10 @@
     "playwright": "1.62.1"
   },
   "scripts": {
+    "start:api": "node --env-file=.env run.cjs --mode api",
     "start": "node --env-file=.env run.cjs",
     "test": "node --test *.test.cjs",
-    "start:headless": "node --env-file=.env run.cjs --browser headless",
-    "start:chrome": "node --env-file=.env run.cjs --browser chrome"
+    "start:headless": "node --env-file=.env run.cjs --mode ui --browser headless",
+    "start:chrome": "node --env-file=.env run.cjs --mode ui --browser chrome"
   }
 }

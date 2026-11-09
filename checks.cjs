@@ -50,7 +50,7 @@ function summaryOf(rows, config) {
     noWin: rows.filter(r => r.outcome === 'no_win').length,
     abnormalRounds: rows.filter(r => r.issues.length).length,
     anomalies, byPrize,
-    limitations: ['Browser UI tests, concurrent batches of tabs in one Chrome window; shared storage is cleared only between batches.', 'No checkout redemption or mailbox delivery verification.', 'Unique-code counts cover this run only; backend starting stock is unknown.']
+    limitations: [config.mode === 'api' ? 'HTTP API tests with a shared visitor and cookie jar for this run; no UI rendering, animation, screenshots, or UI/API comparison.' : 'Browser UI tests, concurrent batches of tabs in one Chrome window; shared storage is cleared only between batches.', 'No checkout redemption or mailbox delivery verification.', 'Unique-code counts cover this run only; backend starting stock is unknown.']
   };
 }
 module.exports = { assess, summaryOf, isFissionCode, visibleCode };

@@ -5,6 +5,7 @@ const { assess, summaryOf, visibleCode } = require('./checks.cjs');
 const { selectBrowser } = require('./browser-mode.cjs');
 const { createBatchGate } = require('./batch-gate.cjs');
 const { options } = require('./options.cjs');
+const { bootstrap, performApi, runPool } = require('./api-mode.cjs');
 const { createPages } = require('./pages.cjs');
 
 function playwright() {
@@ -23,10 +24,10 @@ const rows = [];
 const previousCodes = new Set();
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
 let stopped = false;
-process.on('SIGINT', () => { stopped = true; console.log('\nStop requested; finishing the active batch without retrying.'); });
+process.on('SIGINT', () => { stopped = true; console.log('\nStop requested; finishing active requests without retrying.'); });
 process.on('SIGTERM', () => { stopped = true; });
 const log = event => console.log(JSON.stringify({ at: new Date().toISOString(), ...event }));
-const summary = () => summaryOf(rows, { ...config, runId: stamp, actualConcurrency: Math.min(config.tabs, config.count) });
+const summary = () => summaryOf(rows, { ...config, runId: stamp, actualConcurrency: Math.min(config.mode === 'api' ? config.concurrency : config.tabs, config.count) });
 function save() {
   const value = summary();
   fs.writeFileSync(path.join(out, 'summary.json'), JSON.stringify(value, null, 2));
@@ -207,6 +208,31 @@ async function resetForBatch(context, slots, cookies, batch) {
   });
   event({ event: 'reset_completed', batch });
 }
+async function mainApi() {
+  config.email = process.env.TEST_EMAIL || 'Chace.N@onergroup.com';
+  if (!/^[^\s@]+@[^\s@]+$/.test(config.email)) throw Error('TEST_EMAIL must be an email address');
+  const pw = playwright();
+  const browser = await pw.chromium.launch({ channel: 'chrome', headless: true });
+  let seed;
+  try { seed = await bootstrap({ browser, cookies: await authenticate(browser), config }); }
+  finally { await browser.close(); }
+  // APIRequestContext retains cookies without any browser pages or renderers.
+  const request = await pw.request.newContext({ storageState: { cookies: seed.storageState.cookies, origins: [] } });
+  try {
+    log({ event: 'ready', mode: 'api', count: config.count, concurrency: Math.min(config.concurrency, config.count), browserClosed: true, output: out });
+    event({ event: 'api_ready', campaignId: seed.settings.campaignId, visitorScope: 'shared_for_run' });
+    await runPool({ count: config.count, concurrency: config.concurrency, delayMs: config.delayMs, stopped: () => stopped,
+      perform: (round, worker) => performApi({ request, config, seed, round, worker, stamp, previousCodes, event, stopped: () => stopped }),
+      onResult: row => {
+        rows.push(row);
+        fs.appendFileSync(path.join(out, 'results.jsonl'), JSON.stringify(row) + '\n');
+        if (rows.length % 100 === 0) save();
+        log({ event: 'result', round: row.round, worker: row.worker, outcome: row.outcome, code: row.code, issues: row.issues });
+      }
+    });
+    save(); log({ event: 'complete', ...summary(), output: out, stopped });
+  } finally { await request.dispose(); }
+}
 async function main() {
   config.browser ||= await selectBrowser();
   config.headed = config.browser === 'chrome';
@@ -250,4 +276,4 @@ async function main() {
     save(); log({ event: 'complete', ...summary(), output: out, stopped });
   } finally { await context?.close(); await browser.close(); }
 }
-main().catch(error => { save(); log({ event: 'fatal', error: error.message, output: out }); process.exitCode = 1; });
+(config.mode === 'api' ? mainApi() : main()).catch(error => { save(); log({ event: 'fatal', error: error.message, output: out }); process.exitCode = 1; });
